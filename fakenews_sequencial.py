@@ -61,7 +61,8 @@ def criar_grade(
     list[list[int]]
         Matriz bidimensional com os estados iniciais da simulação.
     """
-    random.seed(semente)
+    if semente is not None:
+        random.seed(semente)
 
     grade = [[IGNORANTE for _ in range(colunas)] for _ in range(linhas)]
 
@@ -185,6 +186,7 @@ def proxima_geracao(
     grade_destino,
     limiar_convencimento=2,
     multiplas_noticias=False,
+    matriz_credulidade=None,
 ):
     """
     Calcula a próxima geração lendo de `grade_atual` e escrevendo em `grade_destino`.
@@ -194,6 +196,10 @@ def proxima_geracao(
       espalhadores; caso contrário permanece IGNORANTE.
     - ESPALHADOR → INATIVO na geração seguinte.
     - INATIVO → INATIVO (estado absorvente).
+
+    Modo probabilístico (quando `matriz_credulidade` é informada):
+    - Substitui a verificação por limiar fixo. O ignorante é convertido se
+      (total_vizinhos / 8.0) >= credulidade[i][j].
 
     Modo competitivo (`multiplas_noticias=True`, Daley-Kendall estendido):
     - IGNORANTE compara vizinhos ESPALHADOR_A e ESPALHADOR_B separadamente.
@@ -233,7 +239,13 @@ def proxima_geracao(
                     viz_a, viz_b = contar_vizinhos_por_tipo(grade_atual, i, j)
                     total_vizinhos = viz_a + viz_b
 
-                    if total_vizinhos >= limiar_convencimento:
+                    converte = False
+                    if matriz_credulidade is not None:
+                        converte = (total_vizinhos / 8.0) >= matriz_credulidade[i][j]
+                    else:
+                        converte = total_vizinhos >= limiar_convencimento
+
+                    if converte:
                         if viz_a > viz_b:
                             grade_destino[i][j] = ESPALHADOR_A
                         elif viz_b > viz_a:
@@ -245,7 +257,13 @@ def proxima_geracao(
                 else:
                     vizinhos = contar_vizinhos_espalhadores(grade_atual, i, j)
 
-                    if vizinhos >= limiar_convencimento:
+                    converte = False
+                    if matriz_credulidade is not None:
+                        converte = (vizinhos / 8.0) >= matriz_credulidade[i][j]
+                    else:
+                        converte = vizinhos >= limiar_convencimento
+
+                    if converte:
                         grade_destino[i][j] = ESPALHADOR
                     else:
                         grade_destino[i][j] = IGNORANTE
@@ -357,6 +375,7 @@ def executar_simulacao(
     mostrar_grade=False,
     semente=42,
     multiplas_noticias=False,
+    probabilidade_variavel=False,
 ):
     """
     Executa a simulação sequencial completa com double buffering.
@@ -383,6 +402,8 @@ def executar_simulacao(
         Semente aleatória para a grade inicial (padrão: 42).
     multiplas_noticias : bool, opcional
         Ativa competição entre fake news A e B (padrão: False).
+    probabilidade_variavel : bool, opcional
+        Substitui o limiar fixo por coeficiente de credulidade individual (padrão: False).
 
     Retorno
     -------
@@ -397,6 +418,10 @@ def executar_simulacao(
         multiplas_noticias,
     )
     grade_b = criar_grade_vazia(linhas, colunas)
+
+    matriz_credulidade = None
+    if probabilidade_variavel:
+        matriz_credulidade = [[random.random() for _ in range(colunas)] for _ in range(linhas)]
 
     titulo = (
         "=== SIMULAÇÃO COMPETITIVA DE FAKE NEWS (A vs B) ==="
@@ -426,7 +451,11 @@ def executar_simulacao(
             f"({contagem_inicial[ESPALHADOR]:,} espalhadores reais)"
         )
 
-    print(f"Limiar de convencimento: {limiar_convencimento} vizinhos")
+    if probabilidade_variavel:
+        print("Limiar de convencimento: Individual (credulidade variável)")
+    else:
+        print(f"Limiar de convencimento: {limiar_convencimento} vizinhos")
+
     print(f"Semente: {semente}")
     if multiplas_noticias:
         print("Modo: múltiplas notícias (competição Daley-Kendall estendida)")
@@ -440,6 +469,7 @@ def executar_simulacao(
             grade_b,
             limiar_convencimento,
             multiplas_noticias,
+            matriz_credulidade,
         )
         grade_a, grade_b = grade_b, grade_a
 
@@ -509,6 +539,7 @@ def simular_sem_imprimir(
     limiar_convencimento=2,
     semente=42,
     multiplas_noticias=False,
+    probabilidade_variavel=False,
 ):
     """
     Executa a simulação e retorna a grade final, sem imprimir no terminal.
@@ -532,6 +563,8 @@ def simular_sem_imprimir(
         Semente aleatória (padrão: 42).
     multiplas_noticias : bool, opcional
         Ativa competição entre fake news A e B (padrão: False).
+    probabilidade_variavel : bool, opcional
+        Substitui limiar fixo por credulidade individual (padrão: False).
 
     Retorno
     -------
@@ -547,12 +580,17 @@ def simular_sem_imprimir(
     )
     grade_b = criar_grade_vazia(linhas, colunas)
 
+    matriz_credulidade = None
+    if probabilidade_variavel:
+        matriz_credulidade = [[random.random() for _ in range(colunas)] for _ in range(linhas)]
+
     for _ in range(geracoes):
         proxima_geracao(
             grade_a,
             grade_b,
             limiar_convencimento,
             multiplas_noticias,
+            matriz_credulidade,
         )
         grade_a, grade_b = grade_b, grade_a
         if total_espalhadores_ativos(contar_estados(grade_a)) == 0:
@@ -591,7 +629,7 @@ def parse_argumentos():
     )
     parser.add_argument(
         "--semente", type=int, default=42,
-        help="Semente do gerador aleatório (padrão: 42)"
+        help="Semente do gerador aleatório (padrão: 42). Use -1 para não fixar a semente."
     )
     parser.add_argument(
         "--limiar", type=int, default=2,
@@ -605,11 +643,18 @@ def parse_argumentos():
         "--multiplas-noticias", action="store_true",
         help="Ativa modo competitivo com duas fake news (A vs B, Daley-Kendall estendido)"
     )
+    parser.add_argument(
+        "--probabilidade-variavel", action="store_true",
+        help="Ativa o modo com credulidade individual variável (ignora limiar fixo)"
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_argumentos()
+
+    semente_valida = args.semente if args.semente >= 0 else None
+
     executar_simulacao(
         linhas=args.linhas,
         colunas=args.colunas,
@@ -617,6 +662,7 @@ if __name__ == "__main__":
         percentual_espalhadores=args.espalhadores,
         limiar_convencimento=args.limiar,
         mostrar_grade=args.mostrar_grade,
-        semente=args.semente,
+        semente=semente_valida,
         multiplas_noticias=args.multiplas_noticias,
+        probabilidade_variavel=args.probabilidade_variavel,
     )
