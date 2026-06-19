@@ -11,96 +11,78 @@ def extrair_tempo(output):
     return None
 
 def rodar_benchmark():
-    # Cenários de carga de trabalho exigidos no roteiro
+    # Cenários de carga de trabalho 
     tamanhos_matriz = [100, 500, 1000]
+    cenarios_geracoes = [10, 50, 100]
+    cenarios_espalhadores = [0.02, 0.05, 0.10] # 2%, 5%, 10%
     num_processos = [1, 2, 4, 8]
     
-    # Fixando alguns parâmetros para a bateria de testes
-    geracoes = "50"
-    espalhadores = "0.05"
-    
-    cenarios = []
+    resultados = []
 
-    print("=== INICIANDO PIPELINE DE BENCHMARK ===")
+    print("=== INICIANDO PIPELINE DE BENCHMARK COMPLETO ===")
 
     for tam in tamanhos_matriz:
-        # -------------------------------------------------------------
-        # 1. Executa a versão Sequencial (Nossa Baseline)
-        # -------------------------------------------------------------
-        cmd_seq = [
-            "python", "fakenews_sequencial.py",
-            "--linhas", str(tam),
-            "--colunas", str(tam),
-            "--geracoes", geracoes,
-            "--espalhadores", espalhadores,
-            "--multiplas-noticias"  # Garante que a sua inovação (Agências) esteja rodando
-        ]
-        
-        print(f"\n[Sequencial] Matriz {tam}x{tam}...")
-        inicio = time.time()
-        res_seq = subprocess.run(cmd_seq, capture_output=True, text=True)
-        
-        tempo_seq = extrair_tempo(res_seq.stdout)
-        if not tempo_seq:
-            tempo_seq = time.time() - inicio
-            
-        cenarios.append({
-            "Versao": "Sequencial",
-            "Tamanho": f"{tam}x{tam}",
-            "Processos": 1,
-            "Tempo_Segundos": round(tempo_seq, 4)
-        })
-        print(f" -> Concluído em {tempo_seq:.4f}s")
-
-        # -------------------------------------------------------------
-        # 2. Executa a versão Paralela (Multiprocessing do M2)
-        # -------------------------------------------------------------
-        for p in num_processos:
-            cmd_par = [
-                "python", "fakenews_paralelo.py",
-                "--linhas", str(tam),
-                "--colunas", str(tam),
-                "--geracoes", geracoes,
-                "--espalhadores", espalhadores,
-                "--multiplas-noticias",
-                "--processos", str(p)  # Argumento crucial que o M2 precisa implementar
-            ]
-            
-            print(f"[Paralela] Matriz {tam}x{tam} com {p} processo(s)...")
-            inicio = time.time()
-            res_par = subprocess.run(cmd_par, capture_output=True, text=True)
-            
-            # Validação de segurança: se o M2 ainda não criou o arquivo ou o script quebrar
-            if res_par.returncode != 0:
-                print(f" -> ERRO: O script falhou ou 'fakenews_paralelo.py' não foi encontrado.")
-                print(f"Detalhe do erro: {res_par.stderr.strip().splitlines()[-1] if res_par.stderr else 'Desconhecido'}")
-                continue
-            
-            tempo_par = extrair_tempo(res_par.stdout)
-            if not tempo_par:
-                tempo_par = time.time() - inicio
+        for gen in cenarios_geracoes:
+            for esp in cenarios_espalhadores:
                 
-            cenarios.append({
-                "Versao": "Paralela",
-                "Tamanho": f"{tam}x{tam}",
-                "Processos": p,
-                "Tempo_Segundos": round(tempo_par, 4)
-            })
-            print(f" -> Concluído em {tempo_par:.4f}s")
+                print(f"\n--- Cenário: {tam}x{tam} | {gen} Ger | {esp*100}% Espalhadores ---")
+                
+                # 1. SEQUENCIAL (Baseline)
+                cmd_seq = [
+                    "python", "fakenews_sequencial.py",
+                    "--linhas", str(tam), "--colunas", str(tam),
+                    "--geracoes", str(gen), "--espalhadores", str(esp),
+                    "--multiplas-noticias"
+                ]
+                print("Rodando Sequencial...")
+                inicio = time.time()
+                res_seq = subprocess.run(cmd_seq, capture_output=True, text=True)
+                t_seq = extrair_tempo(res_seq.stdout) or (time.time() - inicio)
+                resultados.append({"Versao": "Sequencial", "Matriz": f"{tam}x{tam}", "Geracoes": gen, "Espalhadores": esp, "Processos": 1, "Tempo_Segundos": round(t_seq, 4)})
 
-    # -------------------------------------------------------------
-    # 3. Consolidação dos dados (Exportação para CSV)
-    # -------------------------------------------------------------
-    campos = ["Versao", "Tamanho", "Processos", "Tempo_Segundos"]
-    
+                # 2. PARALELA 
+                for p in num_processos:
+                    cmd_par = [
+                        "python", "fakenews_paralelo.py",
+                        "--linhas", str(tam), "--colunas", str(tam),
+                        "--geracoes", str(gen), "--espalhadores", str(esp),
+                        "--multiplas-noticias", "--processos", str(p)
+                    ]
+                    print(f"Rodando Paralela ({p} processos)...")
+                    inicio = time.time()
+                    res_par = subprocess.run(cmd_par, capture_output=True, text=True)
+                    if res_par.returncode == 0:
+                        t_par = extrair_tempo(res_par.stdout) or (time.time() - inicio)
+                        resultados.append({"Versao": "Paralela", "Matriz": f"{tam}x{tam}", "Geracoes": gen, "Espalhadores": esp, "Processos": p, "Tempo_Segundos": round(t_par, 4)})
+                    else:
+                        print(" -> Ignorado (Arquivo M2 não encontrado ou falhou)")
+
+                # 3. DISTRIBUÍDA
+                for p in [2, 4]: # O roteiro pede processos: 2, 4 para distribuído
+                    cmd_dist = [
+                        "python", "servidor.py",
+                        "--linhas", str(tam), "--colunas", str(tam),
+                        "--geracoes", str(gen), "--espalhadores", str(esp),
+                        "--multiplas-noticias", "--clientes", str(p),
+                        "--auto" 
+                    ]
+                    print(f"Rodando Distribuída ({p} clientes)...")
+                    inicio = time.time()
+                    res_dist = subprocess.run(cmd_dist, capture_output=True, text=True)
+                    if res_dist.returncode == 0:
+                        t_dist = extrair_tempo(res_dist.stdout) or (time.time() - inicio)
+                        resultados.append({"Versao": "Distribuida", "Matriz": f"{tam}x{tam}", "Geracoes": gen, "Espalhadores": esp, "Processos": p, "Tempo_Segundos": round(t_dist, 4)})
+                    else:
+                        print(" -> Ignorado (Arquivo M3 não encontrado ou falhou)")
+
+    # Consolidação CSV
+    campos = ["Versao", "Matriz", "Geracoes", "Espalhadores", "Processos", "Tempo_Segundos"]
     with open("resultados_benchmark.csv", "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=campos)
         writer.writeheader()
-        writer.writerows(cenarios)
+        writer.writerows(resultados)
         
-    print("\n=== BENCHMARK FINALIZADO ===")
-    print("Dados extraídos com sucesso para 'resultados_benchmark.csv'.")
-    print("Pronto para plotagem dos gráficos de Speedup e Eficiência!")
+    print("\n=== BENCHMARK FINALIZADO COM SUCESSO ===")
 
 if __name__ == "__main__":
     rodar_benchmark()
