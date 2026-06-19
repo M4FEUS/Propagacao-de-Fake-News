@@ -125,6 +125,5 @@ grade_final = simular_sem_imprimir(
 )
 ```
 
-`proxima_geracao(grade_atual, grade_destino, limiar_convencimento, ...)` lê da matriz atual e escreve na outra, sem `deepcopy`.
+A função `proxima_geracao(grade_atual, grade_destino, limiar_convencimento, multiplas_noticias, matriz_credulidade)` lê da matriz atual e escreve diretamente na matriz de destino, sem utilizar `deepcopy`. Essa técnica de *double buffering* é o que garante a eficiência de memória para a paralelização.
 
-> ⚠️ A assinatura exata da função pode ter ganhado parâmetros adicionais para suportar o modo competitivo (`ESPALHADOR_B`) e as Agências (`AGENCIA`). Vale conferir o código-fonte atual antes de considerar este trecho definitivo.
