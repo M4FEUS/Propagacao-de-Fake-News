@@ -22,6 +22,7 @@ ESPALHADOR_A = 1  # Espalha a fake news tipo A (modo competitivo).
 ESPALHADOR = 1    # Alias de ESPALHADOR_A para compatibilidade com modo simples.
 INATIVO = 2       # Já recebeu a informação, mas não a espalha mais.
 ESPALHADOR_B = 3  # Espalha a fake news tipo B (modo competitivo).
+AGENCIA = 4
 
 ESTADOS_ESPALHADORES = (ESPALHADOR_A, ESPALHADOR_B)
 
@@ -76,6 +77,17 @@ def criar_grade(
             grade[i][j] = ESPALHADOR_A if random.random() < 0.5 else ESPALHADOR_B
         else:
             grade[i][j] = ESPALHADOR
+            
+    # --- INÍCIO DA INOVAÇÃO: Inserir Agências ---
+    # Define que 1% da grade será composta por Agências de Checagem
+    total_agencias = int(total_celulas * 0.01)
+    for _ in range(total_agencias):
+        i = random.randint(0, linhas - 1)
+        j = random.randint(0, colunas - 1)
+        # Garante que não vai sobrescrever um espalhador acidentalmente
+        if grade[i][j] == IGNORANTE:
+            grade[i][j] = AGENCIA
+    # --- FIM DA INOVAÇÃO ---
 
     return grade
 
@@ -234,7 +246,29 @@ def proxima_geracao(
         for j in range(colunas):
             estado = grade_atual[i][j]
 
+            # --- INÍCIO DA INOVAÇÃO: Agência imutável ---
+            if estado == AGENCIA:
+                grade_destino[i][j] = AGENCIA
+                continue
+            # --- FIM DA INOVAÇÃO ---
+
             if estado == IGNORANTE:
+                # --- INÍCIO DA INOVAÇÃO: Checagem de Resistência ---
+                tem_agencia_perto = False
+                for di in [-1, 0, 1]:
+                    for dj in [-1, 0, 1]:
+                        if di == 0 and dj == 0: continue
+                        ni, nj = i + di, j + dj
+                        if 0 <= ni < linhas and 0 <= nj < colunas:
+                            if grade_atual[ni][nj] == AGENCIA:
+                                tem_agencia_perto = True
+                                break
+                    if tem_agencia_perto: break
+                
+                # Aumenta a resistência se houver agência na vizinhança
+                limiar_real = limiar_convencimento + 3 if tem_agencia_perto else limiar_convencimento
+                # --- FIM DA INOVAÇÃO ---
+
                 if multiplas_noticias:
                     viz_a, viz_b = contar_vizinhos_por_tipo(grade_atual, i, j)
                     total_vizinhos = viz_a + viz_b
@@ -243,7 +277,7 @@ def proxima_geracao(
                     if matriz_credulidade is not None:
                         converte = (total_vizinhos / 8.0) >= matriz_credulidade[i][j]
                     else:
-                        converte = total_vizinhos >= limiar_convencimento
+                        converte = total_vizinhos >= limiar_real # Usa o limiar_real aqui
 
                     if converte:
                         if viz_a > viz_b:
@@ -261,7 +295,7 @@ def proxima_geracao(
                     if matriz_credulidade is not None:
                         converte = (vizinhos / 8.0) >= matriz_credulidade[i][j]
                     else:
-                        converte = vizinhos >= limiar_convencimento
+                        converte = vizinhos >= limiar_real
 
                     if converte:
                         grade_destino[i][j] = ESPALHADOR
@@ -296,6 +330,7 @@ def contar_estados(grade):
         ESPALHADOR_A: 0,
         ESPALHADOR_B: 0,
         INATIVO: 0,
+        AGENCIA: 0
     }
 
     for linha in grade:
@@ -353,6 +388,7 @@ def imprimir_grade(grade, limite=30, multiplas_noticias=False):
         ESPALHADOR_A: "A",
         ESPALHADOR_B: "B",
         INATIVO: "N",
+        AGENCIA: "C",
     }
 
     linhas = min(len(grade), limite)
