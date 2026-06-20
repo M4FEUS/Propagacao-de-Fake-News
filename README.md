@@ -90,7 +90,7 @@ python fakenews_original.py
 python fakenews_paralelo.py --processos 4
 ```
 
-> O `benchmark.py` automatiza a execução dessa versão variando de 1 a 8 processos. Parâmetros adicionais de CLI não foram detalhados nas informações repassadas — confirmar no código-fonte.
+> O `benchmark.py` automatiza a execução dessa versão variando de 1 a 8 processos.
 
 ### Versão distribuída (M3)
 
@@ -98,7 +98,7 @@ python fakenews_paralelo.py --processos 4
 python servidor.py --auto
 ```
 
-> A flag `--auto` abre e gerencia os Sockets dos clientes (`cliente.py`) automaticamente, sendo usada pelo `benchmark.py` para os testes distribuídos. Demais parâmetros não foram detalhados — confirmar no código-fonte.
+> A flag `--auto` abre e gerencia os Sockets dos clientes (`cliente.py`) automaticamente, sendo usada pelo `benchmark.py` para os testes distribuídos.
 
 ## Regras da simulação e inovações
 
